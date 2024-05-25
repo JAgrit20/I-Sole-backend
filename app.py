@@ -6,8 +6,8 @@ import json
 import pyrebase
 from datetime import datetime, timezone
 import os
-from twilio.rest import Client
-from twilio.twiml.voice_response import VoiceResponse, Pause
+# from twilio.rest import Client
+# from twilio.twiml.voice_response import VoiceResponse, Pause
 import urllib.parse
 import random
 import bcrypt
@@ -46,13 +46,13 @@ The functionalities this backend supports are:
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["https://zeeshansalim1234.github.io"]}})
 
-cred = credentials.Certificate("i-sole-111bc-firebase-adminsdk-f1xl8-c99396fd2b.json")
+cred = credentials.Certificate("i-sole-new-firebase-adminsdk-x1ipo-fe08e91d7d.json")
 firebase_admin.initialize_app(cred)
-account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
-auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+# account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+# auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
 
 db=firestore.client()
-client = Client(account_sid, auth_token)
+# client = Client(account_sid, auth_token)
 
 """Setup Flask Endpoints"""
 
@@ -298,55 +298,55 @@ def get_all_contacts(username):
         return jsonify({"success": False, "message": f"An error occurred: {e}"}), 500
 
 
-@app.route("/make_call", methods=['GET', 'POST'])
-def make_call():
-    # This essentially sets up the config necessary for making a Twilio call via /voice
+# @app.route("/make_call", methods=['GET', 'POST'])
+# def make_call():
+#     # This essentially sets up the config necessary for making a Twilio call via /voice
 
-    # Get the 'to' phone number and the message from URL parameters
-    if request.method == 'POST':
-        data = request.json
-        to_number = data.get('to')
-        message = data.get('message', 'This is a default message')
-    else:
-        to_number = request.values.get('to')
-        encoded_message = request.values.get('message', 'This is a default message')
-        message = urllib.parse.unquote(encoded_message)
+#     # Get the 'to' phone number and the message from URL parameters
+#     if request.method == 'POST':
+#         data = request.json
+#         to_number = data.get('to')
+#         message = data.get('message', 'This is a default message')
+#     else:
+#         to_number = request.values.get('to')
+#         encoded_message = request.values.get('message', 'This is a default message')
+#         message = urllib.parse.unquote(encoded_message)
 
-    print('Hello World')
+#     print('Hello World')
 
-    # Create a callback URL for the voice response
-    callback_url = "https://i-sole-backend.com/voice?message=" + urllib.parse.quote(message)
+#     # Create a callback URL for the voice response
+#     callback_url = "https://i-sole-backend.com/voice?message=" + urllib.parse.quote(message)
 
-    # Make the call using Twilio client
-    try:
-        call = client.calls.create(
-            to=to_number,
-            from_="+18254351557",
-            url=callback_url,
-            record=True
-        )
-        return f"Call initiated. SID: {call.sid}"
-    except Exception as e:
-        return f"Error: {e}"
+#     # Make the call using Twilio client
+#     try:
+#         call = client.calls.create(
+#             to=to_number,
+#             from_="+18254351557",
+#             url=callback_url,
+#             record=True
+#         )
+#         return f"Call initiated. SID: {call.sid}"
+#     except Exception as e:
+#         return f"Error: {e}"
 
-@app.route("/voice", methods=['GET', 'POST'])
-def voice():
-    # Leverages Twilio API to call patient's emergency contact
+# @app.route("/voice", methods=['GET', 'POST'])
+# def voice():
+#     # Leverages Twilio API to call patient's emergency contact
 
-    # Get the message from the URL parameter
-    message = request.values.get('message', 'This is a default message')
+#     # Get the message from the URL parameter
+#     message = request.values.get('message', 'This is a default message')
     
-    # Create a VoiceResponse object
-    response = VoiceResponse()
+#     # Create a VoiceResponse object
+#     response = VoiceResponse()
 
-    # Split the message by lines and process each line
-    for line in message.split('\n'):
-        response.say(line, voice='Polly.Joanna-Neural', language='en-US')
-        if line.strip().endswith('?'):
-            response.append(Pause(length=3))
+#     # Split the message by lines and process each line
+#     for line in message.split('\n'):
+#         response.say(line, voice='Polly.Joanna-Neural', language='en-US')
+#         if line.strip().endswith('?'):
+#             response.append(Pause(length=3))
 
-    # Return the TwiML as a string
-    return Response(str(response), mimetype='text/xml')
+#     # Return the TwiML as a string
+#     return Response(str(response), mimetype='text/xml')
 
 
 @app.route('/add_pressure_value/<username>', methods=['POST'])
