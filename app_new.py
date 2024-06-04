@@ -3,31 +3,19 @@ import boto3
 from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
 from flask_cors import CORS
 from boto3.dynamodb.conditions import Key, Attr
-# import json
-# import pyrebase
 from datetime import datetime, timezone
-# import os
-# # from twilio.rest import Client
-# # from twilio.twiml.voice_response import VoiceResponse, Pause
-# import urllib.parse
-# import random
-# import bcrypt
-# import pytz
-# import tzlocal
-# import time
-# import statistics
-# import pandas as pd
-# import numpy as np
-# # from keras.models import load_model
-# import joblib
-# import matplotlib
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# import matplotlib.dates as mdates
-# from datetime import datetime, timedelta
-# import pytz
-# from matplotlib.figure import Figure
-# import io
+import pytz
+import pandas as pd
+import numpy as np
+from tensorflow.keras.models import load_model
+import joblib
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime, timedelta
+import pytz
+from matplotlib.figure import Figure
 
 
 app = Flask(__name__)
@@ -1131,10 +1119,125 @@ def plot_prediction_endpoint():
     # Return the URL to the saved image
     return jsonify({'image_url': image_url})
 
+def plot_prediction_with_training_and_predicted_data(training_data, input_data, hyperglecemia_threshold, hypoglycemia_threshold):
+    plt.figure(figsize=(12, 7), facecolor='#1b2130')
+    ax = plt.axes()
+    ax.set_facecolor('#1b2130')
+
+    # Use 'America/Edmonton' for Alberta, Canada
+    utc_minus_6 = pytz.timezone('America/Edmonton')
+    current_time = datetime.now().astimezone(utc_minus_6)
+
+    # Create timestamps from 5 hours in the past to 1 hour in the future
+    timestamps = [current_time - timedelta(hours=10-x) for x in range(6)]  # Adjusting to include 6 timestamps
+
+    # Adjusted to take the 2nd last to the 5th last values from training_data
+    glucose_levels = np.concatenate([training_data['glucose_level_value'].iloc[-5:-1].values, input_data['glucose_level_value'].head(1).values])
+
+    # Get predicted value
+    last_row = training_data.iloc[-1:][['glucose_level_value', 'finger_stick_value', 'basal_value', 'basis_gsr_value', 'basis_skin_temperature_value', 'bolus_dose']]
+    predicted_value = predict_single_entry(input_data)
+
+    # Plot training data
+    plt.plot(timestamps[:-1], glucose_levels, label='Insole Recorded Data', color='#007bff', marker='o', markersize=12, linewidth=3, markeredgewidth=2, markeredgecolor='white')
+    plt.fill_between(timestamps[:-1], glucose_levels, y2=glucose_levels.min(), color='#007bff', alpha=0.075) # underglow effect for training data
+
+    if predicted_value<=hypoglycemia_threshold or predicted_value>=hyperglecemia_threshold:
+      fill_color = '#ff0000'
+    else:
+      fill_color = '#7CFC00'
+
+    # Add predicted value as the future point
+    predicted_time = timestamps[-1]
+    plt.scatter(predicted_time, predicted_value, color=fill_color, label='Predicted Value', zorder=5, s=250, edgecolor='white', linewidth=2)
+    plt.plot([timestamps[-2], predicted_time], [glucose_levels[-1], predicted_value], color=fill_color, linestyle='--', linewidth=3)
+
+    # Add underglow effect for predicted value
+    plt.fill_between([timestamps[-2], predicted_time], [glucose_levels[-1], predicted_value], y2=glucose_levels.min(), color=fill_color, alpha=0.075) # underglow effect for predicted value
+
+    # Adjust x-axis to properly show all timestamps
+    plt.xlim([timestamps[0]- timedelta(seconds=240), predicted_time + timedelta(minutes=30)])
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%I:%M %p'))  # Updated time format
+    plt.xticks(rotation=45, color='white', fontsize=16)
+    plt.yticks(color='white', fontsize=16)
+
+    # Adjust y-axis limits
+    plt.ylim(glucose_levels.min()-2, max(glucose_levels) + 10)
+
+    # Labeling and styling
+    plt.xlabel('Time (Hourly)', color='white', fontsize=20, labelpad=20, fontweight='600')
+    plt.ylabel('Glucose Level (mg/dL)', color='white', fontsize=20, labelpad=20, fontweight='550')
+    # After your plot and legend setup
+    legend = plt.legend(facecolor='#1b2130', edgecolor='white', fontsize=16, loc='upper left')
+    # Set the color of all the legend text to white
+    plt.setp(legend.get_texts(), color='white')
+
+    # Add vertical dotted line across the last training data point
+    plt.axvline(x=timestamps[-2], color='white', linestyle='--', linewidth=1.5, alpha=0.8)
+
+    # Add small black box along the line with white text for "Now"
+    bbox_props_now = dict(boxstyle="round,pad=0.3", fc="black", ec="none", alpha=0.8)
+    current_glucose_value = glucose_levels[-1]  # The current (most recent) glucose level
+    text_now = f"Now\n{current_glucose_value:.1f} mg/dL"  # Glucose level on the next line, without colon
+    plt.text(timestamps[-2], current_glucose_value + 4, text_now, color='white', fontsize=15, ha='center', va='center', bbox=bbox_props_now, linespacing=1.5)
 
 
+    # Add small black box along the line with white text for "Future"
+    bbox_props_future = dict(boxstyle="round,pad=0.3", fc="black", ec="none", alpha=0.8)
+    predicted_glucose_value = predicted_value  # The future predicted glucose level
+    text_future = f"Prediction\n{predicted_glucose_value:.1f} mg/dL"  # Glucose level on the next line, without colon
+    plt.text(predicted_time, predicted_glucose_value + 4, text_future, color='white', fontsize=15, ha='center', va='center', bbox=bbox_props_future, linespacing=1.5)
+
+    # Remove the top and right spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_color('white')
 
 
+    plt.grid(color='gray', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    
+    # Define the image save path
+    image_save_path = 'glucose_plot.png'
+    plt.savefig(image_save_path)
+    plt.close()
+
+    # Construct the URL to access the saved image
+    # Adjust the URL based on your actual server setup and image serving mechanism
+    image_url = f'https://i-sole-backend.com/{image_save_path}'
+
+    return image_url
+
+
+def predict_single_entry(input_data):
+    # Load the trained model and scaler objects
+    model_path = '544_trained_model.h5'
+    model = load_model(model_path)
+    scaler_x_path = '544_scaler_x.pkl'
+    scaler_y_path = '544_scaler_y.pkl'
+    scaler_x = joblib.load(scaler_x_path)
+    scaler_y = joblib.load(scaler_y_path)
+
+    # Ensure input_data is a DataFrame with the expected columns
+    if isinstance(input_data, pd.DataFrame) == False:
+        raise ValueError("Input data must be a pandas DataFrame.")
+    
+    # Ensure the DataFrame has the expected structure
+    expected_cols = ['glucose_level_value', 'finger_stick_value', 'basal_value', 'basis_gsr_value', 'basis_skin_temperature_value', 'bolus_dose']
+    if not all(col in input_data.columns for col in expected_cols):
+        raise ValueError("Input DataFrame does not contain the expected columns.")
+    
+    # Preprocess the input data
+    X_input = input_data.apply(pd.to_numeric, errors='coerce').fillna(0)
+    scaled_X_input = scaler_x.transform(X_input)
+    scaled_X_input = np.reshape(scaled_X_input, (1, scaled_X_input.shape[0], scaled_X_input.shape[1]))
+    
+    # Make prediction
+    prediction = model.predict(scaled_X_input, batch_size=1)
+    scaled_prediction = scaler_y.inverse_transform(prediction)
+    
+    return scaled_prediction.flatten()[0]  # Return a single predicted value
 
 
 
