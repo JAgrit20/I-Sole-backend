@@ -1,4 +1,5 @@
 from decimal import Decimal
+import statistics
 import boto3
 from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
 from flask_cors import CORS
@@ -34,7 +35,6 @@ def signup():
         username = signup_data['username']
         email = signup_data['email']
         full_name = signup_data['fullName']
-        role = signup_data['role']
         password = signup_data['password']
 
         # Create a new item in the DynamoDB table
@@ -43,7 +43,6 @@ def signup():
                 'username': username,
                 'email': email,
                 'name': full_name,
-                'role': role,
                 'password': password,
                 'personal_metrics': {}  # Add an empty personal_metrics object
             }
@@ -838,23 +837,31 @@ def update_weather_conditions():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/get_personal_metrics/<username>', methods=['GET'])
-def get_personal_metrics(username):
+@app.route('/get_personal_metrics', methods=['GET'])
+def get_personal_metrics():
     try:
+        # Extract username from query parameters
+        username = request.args.get('username')
+        
+        if not username:
+            return jsonify({"success": False, "message": "Username is required"}), 400
+
         # Query DynamoDB for the user's personal metrics
         response = users_table.get_item(
             Key={
                 'username': username
             }
         )
+
         # Check if the item exists in the response
         if 'Item' in response:
-            personal_data = response['Item']['personal_metrics']
+            personal_data = response['Item'].get('personal_metrics', {})
             return jsonify({"success": True, "data": personal_data}), 200  # Set success to True and include data
         else:
             return jsonify({"success": False, "message": "Personal metrics not found"}), 404
     except Exception as e:
-        # Handle exceptions
+        # Handle other exceptions
+        print(f"Exception: {e}")
         return jsonify({"success": False, "message": str(e)}), 500
     
 
@@ -1240,10 +1247,93 @@ def predict_single_entry(input_data):
     return scaled_prediction.flatten()[0]  # Return a single predicted value
 
 
+def calculate_blood_glucose(sweat_glucose_umolL):
+    BG_high = 300  # mg/dL
+    BG_low = 50    # mg/dL
+    SG_high_mgDL = 36   # mg/dL
+    SG_low_mgDL = 10.8  # mg/dL
+
+    # Calculate K
+    K = (BG_high - BG_low) / (SG_high_mgDL - SG_low_mgDL)
+
+    # Calculate Io
+    Io = BG_low - K * SG_low_mgDL
+
+    """
+    Convert sweat glucose signal from µmol/L to estimated blood glucose level in mg/dL.
+    """
+    # Convert sweat glucose from µmol/L to mg/dL
+    sweat_glucose_mgDL = sweat_glucose_umolL * 0.18
+
+    # Calculate estimated blood glucose
+    BG = K * sweat_glucose_mgDL + Io
+    return BG
+
+@app.route('/get_latest_glucose/<username>', methods=['GET', 'POST'])
+def get_latest_glucose(username):
+    try:
+        # Query DynamoDB table for the most recent glucose entry for the user
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username),
+            ScanIndexForward=False,  # Sort by timestamp in descending order
+            Limit=1  # Get only the latest entry
+        )
+        print(response)
+
+        if response['Items']:
+            latest_glucose_item = response['Items'][0]
+            sweat_glucose = round(float(latest_glucose_item['glucose_value']), 2)
+            blood_glucose = round(calculate_blood_glucose(sweat_glucose), 2)
+            latestGlucoseValue = {
+                "sweatGlucose": sweat_glucose,
+                "bloodGlucose": blood_glucose
+            }
+
+            return jsonify({"success": True, "latestGlucoseValue": latestGlucoseValue}), 200
+        else:
+            return jsonify({"success": False, "message": "No glucose data found for user: " + username}), 404
+
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route('/get_average_pressure/<username>', methods=['GET'])
+def get_average_pressure(username):
+    try:
+        # Get start and end timestamps from query parameters
+        start_timestamp_str = request.args.get('start').rstrip('Z')  # Remove 'Z' suffix
+        end_timestamp_str = request.args.get('end').rstrip('Z')  # Remove 'Z' suffix
+        # Get the region from query parameters
+        foot_region = request.args.get('footRegion')
+        # print(username,start_timestamp_str,end_timestamp_str)
 
+        # Query DynamoDB table for pressure data within the specified time range
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str)
+        )
 
+        pressure_data = response['Items']
+
+        p_values = []
+        for item in pressure_data:
+            if foot_region in item['p_value']:
+                p_values.append(item['p_value'][foot_region])
+
+        if len(p_values) == 0:
+            average_pressure = 0
+            diabetic_ulceration_risk = 'Unknown'
+        else:
+            # Calculate the average of p_values and round it to 2 decimal places
+            average_pressure = round(statistics.mean(p_values), 2)
+            diabetic_ulceration_risk = 'Low' if average_pressure <= 200 else 'High'
+
+        return jsonify({"success": True, "averagePressure": average_pressure, "diabeticUlcerationRisk": diabetic_ulceration_risk}), 200
+
+    except Exception as e:
+        # Handle exceptions
+        print(f"Exception occurred: {str(e)}")
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 
