@@ -1,7 +1,7 @@
 from decimal import Decimal
 import statistics
 import boto3
-from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
+from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for,send_file, Response
 from flask_cors import CORS
 from boto3.dynamodb.conditions import Key, Attr
 from datetime import datetime, timezone
@@ -17,6 +17,8 @@ import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import pytz
 from matplotlib.figure import Figure
+import io  
+import base64
 
 
 app = Flask(__name__)
@@ -168,7 +170,7 @@ def add_glucose_value(username):
             Item={
                 'username': username,
                 'timestamp': current_time,
-                'glucose': glucose_value
+                'glucose_value': glucose_value
             }
         )
 
@@ -1116,7 +1118,7 @@ def plot_prediction_endpoint():
     training_data = pd.read_csv('544-ws-training.csv')  # Adjust path as necessary
     
     # Here, you would call your adapted plotting function with the loaded data
-    image_url = plot_prediction_with_training_and_predicted_data(
+    image = plot_prediction_with_training_and_predicted_data(
         training_data,
         input_data_df,
         hyperglycemia_threshold,
@@ -1124,7 +1126,7 @@ def plot_prediction_endpoint():
     )
 
     # Return the URL to the saved image
-    return jsonify({'image_url': image_url})
+    return jsonify({'image': image})
 
 def plot_prediction_with_training_and_predicted_data(training_data, input_data, hyperglecemia_threshold, hypoglycemia_threshold):
     plt.figure(figsize=(12, 7), facecolor='#1b2130')
@@ -1205,16 +1207,17 @@ def plot_prediction_with_training_and_predicted_data(training_data, input_data, 
     plt.grid(color='gray', linestyle='--', linewidth=0.5)
     plt.tight_layout()
     
-    # Define the image save path
-    image_save_path = 'glucose_plot.png'
-    plt.savefig(image_save_path)
+    # Save the plot to a bytes buffer
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+
+    # Encode the image as a base64 string
+    image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+
     plt.close()
 
-    # Construct the URL to access the saved image
-    # Adjust the URL based on your actual server setup and image serving mechanism
-    image_url = f'https://i-sole-backend.com/{image_save_path}'
-
-    return image_url
+    return image_base64
 
 
 def predict_single_entry(input_data):
@@ -1297,6 +1300,9 @@ def get_latest_glucose(username):
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
 
+@app.route('/testapi', methods=['GET'])
+def testapi():
+    return jsonify({"message": "hello world"})
 
 @app.route('/get_average_pressure/<username>', methods=['GET'])
 def get_average_pressure(username):
@@ -1336,18 +1342,104 @@ def get_average_pressure(username):
         return jsonify({"success": False, "message": str(e)}), 500
 
 
+@app.route('/plot_pressure', methods=['GET'])
+def serve_plot():
+    print("hello thaet")
+    username = request.args.get('username')
+    start_timestamp = request.args.get('start_timestamp')
+    end_timestamp = request.args.get('end_timestamp')
+    region = request.args.get('region')
+
+    # Directly fetch the pressure data using the internal function
+    pressure_data = fetch_pressure_data_internal(username, start_timestamp, end_timestamp, region)
+
+    # If there are more than 50 values, keep only the last 50
+    if len(pressure_data) > 50:
+        pressure_data = pressure_data[-50:]
+
+    # print("region values 50: ", pressure_data)
+
+    # Convert all values to floats
+    region_values_float = [float(value) for value in pressure_data]
+
+    if isinstance(region_values_float, list):
+        # Plot the pressure data and get the image buffer
+        image_buffer = plot_pressuree(region_values_float)
+        return send_file(image_buffer, mimetype='image/png')
+    else:
+        return jsonify({"success": False, "message": "Failed to fetch pressure data"}), 500
 
 
+def fetch_pressure_data_internal(username, start_timestamp_str, end_timestamp_str, region):
+    try:
+        start_timestamp_str = start_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
+        end_timestamp_str = end_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
+
+        # print("here you goo \n\n\n",start_timestamp_iso, end_timestamp_iso, start_timestamp_str,end_timestamp_str)
+
+        # Query DynamoDB table for pressure data within the specified time range
+        response = device_data_table.query(
+            KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str),
+            Limit=50
+        )
+
+        pressure_data = response['Items']
+
+        p_values = []
+        for item in pressure_data:
+            if region in item['p_value']:
+                p_values.append(item['p_value'][region])
+        return p_values  # Return the data directly
+
+    except Exception as e:
+        print(f"Error fetching pressure data: {e}")
+        return []  # Return an empty list or handle the error as needed
 
 
+def plot_pressuree(training_data):
+    plt.figure(figsize=(12, 7), facecolor='#1b2130')
+    ax = plt.axes()
+    ax.set_facecolor('#1b2130')
 
 
+    timestamps = [x * 5 for x in range(50)]
+    data_to_plot = training_data + [None] * (50 - len(training_data))
 
+    if data_to_plot:
+        plt.plot(timestamps, data_to_plot, label='Insole Recorded Data', color='#007bff', marker='o', markersize=12, linewidth=3, markeredgewidth=2, markeredgecolor='white')
+        valid_indices = [i for i, v in enumerate(data_to_plot) if v is not None]
+        if valid_indices:
+            plt.fill_between(timestamps[:valid_indices[-1]+1], data_to_plot[:valid_indices[-1]+1], color='#007bff', alpha=0.075)
 
+    plt.xticks(timestamps, [str(ts) for ts in timestamps], rotation=45, color='white', fontsize=12)
+    plt.yticks(color='white', fontsize=12)
 
+    if training_data:
+        y_min, y_max = min(training_data), max(training_data)
+        y_range = y_max - y_min
+        plt.ylim(y_min - 0.05 * y_range, y_max + 0.3 * y_range)
+
+    plt.xlabel('Time (seconds)', color='white', fontsize=16, labelpad=20, fontweight='600')
+    plt.ylabel('Pressure Value (kPa)', color='white', fontsize=16, labelpad=20, fontweight='600')
+    # Create the legend
+    legend = plt.legend(facecolor='#1b2130', edgecolor='white', fontsize=16, loc='upper left')
+
+    # Set the color of all the legend text to white
+    for text in legend.get_texts():
+        text.set_color('white')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    ax.spines['bottom'].set_color('white')
+    plt.grid(color='gray', linestyle='--', linewidth=0.5)
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', facecolor=ax.get_facecolor())
+    plt.close()
+    buf.seek(0)
+    return buf
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
-
-
+    app.run(host='0.0.0.0',port='5000',debug=True)
