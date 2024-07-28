@@ -81,7 +81,6 @@ def signin():
             }
         )
         user_data = response.get('Item', {})
-        print(user_data);
 
         # Check if the user exists and if the password matches
         if user_data and password == user_data.get('password'):
@@ -1281,7 +1280,7 @@ def get_latest_glucose(username):
             ScanIndexForward=False,  # Sort by timestamp in descending order
             Limit=1  # Get only the latest entry
         )
-        print(response)
+        # print(response)
 
         if response['Items']:
             latest_glucose_item = response['Items'][0]
@@ -1338,13 +1337,15 @@ def get_average_pressure(username):
 
     except Exception as e:
         # Handle exceptions
-        print(f"Exception occurred: {str(e)}")
         return jsonify({"success": False, "message": str(e)}), 500
 
 
 @app.route('/plot_pressure', methods=['GET'])
 def serve_plot():
+<<<<<<< Updated upstream
     print("hello thaet")
+=======
+>>>>>>> Stashed changes
     username = request.args.get('username')
     start_timestamp = request.args.get('start_timestamp')
     end_timestamp = request.args.get('end_timestamp')
@@ -1357,8 +1358,11 @@ def serve_plot():
     if len(pressure_data) > 50:
         pressure_data = pressure_data[-50:]
 
+<<<<<<< Updated upstream
     # print("region values 50: ", pressure_data)
 
+=======
+>>>>>>> Stashed changes
     # Convert all values to floats
     region_values_float = [float(value) for value in pressure_data]
 
@@ -1375,8 +1379,11 @@ def fetch_pressure_data_internal(username, start_timestamp_str, end_timestamp_st
         start_timestamp_str = start_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
         end_timestamp_str = end_timestamp_str.rstrip('Z')  # Remove 'Z' suffix
 
+<<<<<<< Updated upstream
         # print("here you goo \n\n\n",start_timestamp_iso, end_timestamp_iso, start_timestamp_str,end_timestamp_str)
 
+=======
+>>>>>>> Stashed changes
         # Query DynamoDB table for pressure data within the specified time range
         response = device_data_table.query(
             KeyConditionExpression=Key('username').eq(username) & Key('timestamp').between(start_timestamp_str, end_timestamp_str),
@@ -1392,7 +1399,10 @@ def fetch_pressure_data_internal(username, start_timestamp_str, end_timestamp_st
         return p_values  # Return the data directly
 
     except Exception as e:
+<<<<<<< Updated upstream
         print(f"Error fetching pressure data: {e}")
+=======
+>>>>>>> Stashed changes
         return []  # Return an empty list or handle the error as needed
 
 
@@ -1442,4 +1452,8 @@ def plot_pressuree(training_data):
 
 
 if __name__ == '__main__':
+<<<<<<< Updated upstream
     app.run(host='0.0.0.0',port='5000',debug=True)
+=======
+    app.run(host='0.0.0.0',port='5000')
+>>>>>>> Stashed changes
