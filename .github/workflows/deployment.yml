@@ -1,0 +1,31 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.5.3
+      with:
+        ssh-private-key: ${{ secrets.EC2_KEY }}
+
+    - name: Deploy on EC2
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.I_SOLE_EC2_USERNAME }}@${{ secrets.I_SOLE_EC2_HOSTNAME }} << 'EOF'
+            cd /home/${{ secrets.I_SOLE_EC2_USERNAME }}/app
+            # Add commands to restart your application, for example:
+            # For a Node.js app
+            pm2 restart all || pm2 start app.js
+            # For a Python app
+            # sudo systemctl restart myapp.service
+            # For a web server
+            # sudo systemctl restart caddy
+          EOF
