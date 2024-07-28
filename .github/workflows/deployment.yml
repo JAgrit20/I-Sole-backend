@@ -28,4 +28,4 @@ jobs:
             # sudo systemctl restart myapp.service
             # For a web server
             # sudo systemctl restart caddy
-          EOF
+        EOF
