@@ -10,7 +10,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Setup SSH
       uses: webfactory/ssh-agent@v0.5.3
@@ -26,5 +26,5 @@ jobs:
             # For a Python app
             sudo systemctl restart myapp.service
             # For a web server
-            # sudo systemctl restart caddy
+            sudo systemctl restart caddy
         EOF
