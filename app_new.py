@@ -1,5 +1,7 @@
 from decimal import Decimal
 import statistics
+import threading
+import time
 import boto3
 from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for,send_file, Response
 from flask_cors import CORS
@@ -19,6 +21,7 @@ import pytz
 from matplotlib.figure import Figure
 import io  
 import base64
+import data_faker
 
 
 app = Flask(__name__)
@@ -1301,7 +1304,8 @@ def get_latest_glucose(username):
 
 @app.route('/testapi', methods=['GET'])
 def testapi():
-    return jsonify({"message": "hello world"})
+    return request.json.get('Hello there! from I-Sole Backend')
+
 
 @app.route('/get_average_pressure/<username>', methods=['GET'])
 def get_average_pressure(username):
@@ -1338,6 +1342,34 @@ def get_average_pressure(username):
     except Exception as e:
         # Handle exceptions
         return jsonify({"success": False, "message": str(e)}), 500
+
+
+@app.route('/start_data_faker', methods=['POST'])
+def start_data_faker():
+    username = request.json.get('username')
+
+    # Function to stop the thread after a given time
+    def stop_task(thread):
+        thread.do_run = False
+
+    # Create and start the thread
+    task_thread = threading.Thread(target=data_faker.add_pressure_data(username))
+    task_thread.start()
+
+    # Run the task for 5 seconds
+    timer = threading.Timer(300, stop_task, args=[task_thread])
+    timer.start()
+
+    # Check for the thread status and stop it if needed
+    task_thread.do_run = True
+    while getattr(task_thread, "do_run", True):
+        time.sleep(0.1)
+
+    # Ensure the thread is properly stopped
+    task_thread.join()
+    print("Data Insertion has been stopped.")
+
+
 
 
 @app.route('/plot_pressure', methods=['GET'])
@@ -1436,6 +1468,9 @@ def plot_pressuree(training_data):
     plt.close()
     buf.seek(0)
     return buf
+
+
+
 
 
 if __name__ == '__main__':
