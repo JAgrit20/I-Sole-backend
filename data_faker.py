@@ -46,7 +46,7 @@ def add_pressure_data(username):
         print(f"Inserted item with timestamp {timestamp} and glucose_value {glucose_value} in user: {username}")
         
         # Wait for 1 second before inserting the next record
-        time.sleep(1)
+        time.sleep(10)
 
 if __name__ == "__main__":
     username = 'testuser'
