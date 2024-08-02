@@ -1,3 +1,4 @@
+import threading
 import boto3
 import random
 from datetime import datetime, timedelta
@@ -22,7 +23,7 @@ def generate_random_glucose_value():
     return Decimal(str(round(random.uniform(100, 250), 2)))
 
 def add_pressure_data(username):
-    while True:
+    while getattr(threading.current_thread(), "do_run", True):
         # Generate current timestamp and format it as string
         timestamp = datetime.utcnow().isoformat(sep='T', timespec='microseconds')
         
@@ -42,7 +43,7 @@ def add_pressure_data(username):
         
         # Put the item into the DynamoDB table
         table.put_item(Item=item)
-        print(f"Inserted item with timestamp {timestamp} and glucose_value {glucose_value}")
+        print(f"Inserted item with timestamp {timestamp} and glucose_value {glucose_value} in user: {username}")
         
         # Wait for 1 second before inserting the next record
         time.sleep(1)

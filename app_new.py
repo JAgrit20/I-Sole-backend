@@ -21,7 +21,7 @@ import pytz
 from matplotlib.figure import Figure
 import io  
 import base64
-import data_faker
+from data_faker import add_pressure_data  # Import add_pressure_data function
 
 
 app = Flask(__name__)
@@ -1304,7 +1304,7 @@ def get_latest_glucose(username):
 
 @app.route('/testapi', methods=['GET'])
 def testapi():
-    return request.json.get('Hello there! from I-Sole Backend')
+    return 'Hello there! from I-Sole Backend'
 
 
 @app.route('/get_average_pressure/<username>', methods=['GET'])
@@ -1346,28 +1346,35 @@ def get_average_pressure(username):
 
 @app.route('/start_data_faker', methods=['POST'])
 def start_data_faker():
-    username = request.json.get('username')
+    try:
+        username = request.json.get('username')
+        if not username:
+            return jsonify({"success": False, "message": "Username is required"}), 400
 
-    # Function to stop the thread after a given time
-    def stop_task(thread):
-        thread.do_run = False
+        # Function to stop the thread after a given time
+        def stop_task(thread):
+            thread.do_run = False
 
-    # Create and start the thread
-    task_thread = threading.Thread(target=data_faker.add_pressure_data(username))
-    task_thread.start()
+        # Create and start the thread
+        task_thread = threading.Thread(target=add_pressure_data, args=(username,))
+        task_thread.do_run = True  # Initialize the thread's do_run attribute
+        task_thread.start()
 
-    # Run the task for 5 seconds
-    timer = threading.Timer(300, stop_task, args=[task_thread])
-    timer.start()
+        # Run the task for 3 seconds
+        timer = threading.Timer(30, stop_task, args=[task_thread])
+        timer.start()
 
-    # Check for the thread status and stop it if needed
-    task_thread.do_run = True
-    while getattr(task_thread, "do_run", True):
-        time.sleep(0.1)
+        # Wait for the thread to stop
+        while task_thread.is_alive():
+            time.sleep(0.1)
 
-    # Ensure the thread is properly stopped
-    task_thread.join()
-    print("Data Insertion has been stopped.")
+        # Ensure the thread is properly stopped
+        task_thread.join()
+
+        return jsonify({"success": True, "message": "Data insertion has been stopped."})
+
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
 
