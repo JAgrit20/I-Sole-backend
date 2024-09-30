@@ -70,8 +70,8 @@ def signin():
     try:
         # Parse the incoming data from the sign-in form
         signin_data = request.json
-        username = signin_data['username']
-        password = signin_data['password']
+        username = "gouri"
+        password = "gouri"
 
         # Fetch the user's data from the DynamoDB table
         response = users_table.get_item(
